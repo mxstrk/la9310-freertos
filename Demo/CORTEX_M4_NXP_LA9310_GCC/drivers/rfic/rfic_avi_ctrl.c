@@ -3,6 +3,7 @@
  * Copyright 2021 NXP
  */
 #include <rfic_avi_ctrl.h>
+#include "delay.h"	/* vUDelay */
 
 void vLa9310MbxSend( struct la9310_mbox_h2v *mbox_h2v )
 {
@@ -27,6 +28,32 @@ void vLa9310MbxSend( struct la9310_mbox_h2v *mbox_h2v )
     return;
 }
 
+// Pairing hygiene (the TDD engagement lottery, charter 07-15): a timed-out
+// exchange leaves its LATE ack in the VSPA outbox, and every later
+// Send/Receive pair then reads its PREDECESSOR's ack - off-by-one that
+// persists across sessions (the capability latch read a stale msb32=0 and
+// txgate engaged bimodally). Drain stale messages before a pairing-critical
+// exchange; returns how many were discarded (nonzero = a desync existed).
+uint32_t vLa9310MbxDrain( void )
+{
+    struct avi_hndlr *avihndl = iLa9310AviHandle();
+    struct avi_mbox vspa_mbox;
+    uint32_t n = 0;
+
+    if( NULL != avihndl )
+    {
+        while( n < 4 && 0 == iLa9310AviHostRecvMboxFromVspa( avihndl, &vspa_mbox, 0 ) )
+        {
+            n++;
+        }
+        if( n )
+        {
+            log_err( "mbox drain: %u stale ack(s) discarded (pairing resync)\r\n", ( unsigned ) n );
+        }
+    }
+    return n;
+}
+
 BaseType_t vLa9310MbxReceive(struct la9310_mbox_v2h *mbox_v2h)
 {
     struct avi_hndlr *avihndl = NULL;
@@ -36,9 +63,12 @@ BaseType_t vLa9310MbxReceive(struct la9310_mbox_v2h *mbox_v2h)
     avihndl = iLa9310AviHandle();
     if( NULL != avihndl )
     {
-        while (retries < MAILBOX_VALID_STATUS_RETRIES)
+        while (retries < MAILBOX_VALID_STATUS_RETRIES * 10)
         {
-            /* Read VSPA inbox 0 */
+            /* Read VSPA inbox 0. The AVI receive is non-blocking now (v3 transport
+             * fix - its old 10-tick xQueueReceive block starved the host-swcmd
+             * event wake), so this loop provides the bounded wait: 10 us yields
+             * give ~10 us ack wake latency with a ~20 ms total budget. */
             if ( 0 == iLa9310AviHostRecvMboxFromVspa(avihndl, &vspa_mbox, 0 ))
             {
                 mbox_v2h->msb32 = vspa_mbox.msb;
@@ -46,6 +76,7 @@ BaseType_t vLa9310MbxReceive(struct la9310_mbox_v2h *mbox_v2h)
         //        log_info("\r\n **V2H: MSB_LSB(Hex):%x::%x retries %d\r\n", mbox_v2h->msb32, *((uint32_t *)(&mbox_v2h->status)), retries);
                 return pdPASS;
             }
+            vUDelay( 10 );
             retries++;
         }
         if (retries == MAILBOX_VALID_STATUS_RETRIES)

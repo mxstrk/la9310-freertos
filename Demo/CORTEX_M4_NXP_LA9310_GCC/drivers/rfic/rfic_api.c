@@ -231,7 +231,8 @@ RficResp_t xRficIQDump( RficHandle_t handle, uint32_t size )
     CmdData = (struct sw_cmddata_dump_iq *) &SwCmd.data[0];
 
     CmdData->addr = 0x20001000;
-    CmdData->size = size;
+    // the dump length is only used by the print loop below; the RFNM stream handler
+    // ignores it and the payload word now carries the anchor tick (must stay 0 here)
 	xHandleSwCmd( pRficDev, &SwCmd);
 
     tcm_ptr = (uint8_t * ) (( uint32_t ) CmdData->addr);

@@ -21,6 +21,7 @@
 #include "la9310_pinmux.h"
 #include "bbdev_ipc.h"
 #include "la9310_dcs_api.h"
+#include "rfnm_rf_ctrl.h"
 #include <phytimer.h>
 #include <sync_timing_device.h>
 #include <sync_timing_device_cli.h>
@@ -45,7 +46,6 @@
  * Register commands that can be used with FreeRTOS+CLI.  The commands are
  * defined in CLI-Commands.c.
  */
-    extern void vRegisterNLMTestCommands( void );
 
 /* cOutputBuffer is used by FreeRTOS+CLI.  It is declared here so the
  * persistent qualifier can be used.  For the buffer to be declared here, rather
@@ -449,6 +449,16 @@ int iInitHandler ( void )
         vDcsInit(Half_Freq);
     #endif
 
+    if( rfnm_tdd_init() )
+    {
+        log_info( "Failed to create the rfnm tdd task\n\r" );
+    }
+
+    if( rfnm_rtc_init() )
+    {
+        log_info( "Failed to create the rfnm rtc task\n\r" );
+    }
+
     #ifdef TURN_ON_HOST_MODE
     #ifdef RUN_V2H_TEST_APP
         irc = xTaskCreate( vV2H, "LA9310 V2H task", configMINIMAL_STACK_SIZE,
@@ -505,7 +515,6 @@ int main( void )
     }
 
     #ifdef LA9310_ENABLE_COMMAND_LINE
-        vRegisterNLMTestCommands();
         vUARTCommandConsoleStart( mainUART_COMMAND_CONSOLE_STACK_SIZE,
                                   mainUART_COMMAND_CONSOLE_TASK_PRIORITY );
     #endif

@@ -53,6 +53,27 @@ typedef enum RfSwCmdId {
 
     RF_SW_SET_IQ_IMBALANCE,
 
+    /* phytimer phase 2a: host-triggered timed FE switch - runs switch_rf(mode) on the M4
+     * (RFCTL_5 edge + rf_ctrl handoff to the i.MX8MP M7). data[0] = u32 mode
+     * (0xAAAAAAAA = fe_tdd[TX] profile, 0xBBBBBBBB = fe_tdd[RX] profile). */
+    RF_SW_CMD_SWITCH_RF,
+
+    /* phytimer phase 2a step 3: M4 TDD scheduler. data[0] = period ticks (0 = stop),
+     * data[1] = RX-window (duty) ticks. Gates + FE flips ride one tick grid. */
+    RF_SW_CMD_TDD,
+
+    /* v3 phase 0: one DFE-style TX window. data[0] = absolute open tick (SAMPLE
+     * resolution - no slot alignment), data[1] = window length in ticks, data[2] =
+     * source DAC-ring slot. The M4 rebuilds the VSPA fifo (MBOX_OPC_TX_WINDOW),
+     * arms C11 open at the tick and close at tick+len; the handler blocks until
+     * the open edge fires (debug-tool semantics; the phase-1 ring walker replaces it). */
+    RF_SW_CMD_TX_WINDOW,
+
+    /* Host<->M4 mailbox ownership: host boot-handshakes with the VSPA
+     * (registry kernel swaps) take exclusive mailbox ownership - data[0]=1 begin
+     * (M4 masks its VSPA IRQ and stops consuming), 0 end. Old M4 fw ignores the
+     * unknown cmd; the host keeps its data-register fallback as belt. */
+    RF_SW_CMD_VSPA_MBOX_HANDOFF,
 
     RF_SW_CMD_END
 } RfSwCmdId_t;
@@ -127,8 +148,19 @@ struct sw_cmddata_ctrl_lna {
     uint32_t state;
 };
 
-/* CMD: RF_SWCMD_DUMP_IQ_DATA */
+/* CMD: RF_SWCMD_DUMP_IQ_DATA (the stream word). The anchor is INTENT, not a tick
+ * (v2 charter P2): the mint must satisfy t0 == anchor_phase (mod anchor_granule) at
+ * the first opportunity at or after the default mint. granule == 0 = no request.
+ * A phase cannot go stale, so the pre-P2 staleness heuristics (kernel send-time
+ * projection, M4 10 s accept window) are gone WITH the absolute-tick field. */
 struct sw_cmddata_dump_iq {
+    uint32_t addr;
+    uint32_t anchor_phase;
+    uint32_t anchor_granule;
+};
+
+/* CMD: RF_SW_CMD_TX_IQ_DATA (legacy NXP TX IQ test path - kept on its original layout) */
+struct sw_cmddata_tx_iq {
     uint32_t addr;
     uint32_t size;
     uint32_t start_stop;

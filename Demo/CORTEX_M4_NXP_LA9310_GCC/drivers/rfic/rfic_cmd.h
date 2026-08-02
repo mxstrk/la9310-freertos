@@ -16,6 +16,7 @@ void xRficProcessCtrlLna( RficDevice_t *pRficDev, rf_sw_cmd_desc_t *pSwCmdDesc )
 void xRficProcessReadReg( RficDevice_t *pRficDev, rf_sw_cmd_desc_t *pSwCmdDesc );
 void xRficProcessWriteReg( RficDevice_t *pRficDev, rf_sw_cmd_desc_t *pSwCmdDesc );
 void vRficProcessIqDump( rf_sw_cmd_desc_t *rfic_sw_cmd );
+void vRficProcessTxWindow( rf_sw_cmd_desc_t *rfic_sw_cmd );
 void xRficProcessCtrlDemodGain( RficDevice_t *pRficDev, rf_sw_cmd_desc_t *pSwCmdDesc );
 void xRficProcessCtrlVgaGain( RficDevice_t *pRficDev, rf_sw_cmd_desc_t *pSwCmdDesc );
 void xRficProcessFastCalib( RficDevice_t *pRficDev);

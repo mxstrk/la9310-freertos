@@ -14,9 +14,25 @@
 volatile rf_ctrl_s rf_ctrl __attribute__((section(".rfctrl")));
 
 /* routine for returning the current timer value */
-inline uint32_t uGetPhyTimerTimestamp(void)
+static inline uint32_t uGetPhyTimerTimestamp(void)
 {
 	return ulPhyTimerCapture( PHY_TIMER_COMPARATOR_COUNT - 1 );
+}
+
+// timed variant: the FE flip lands at exactly target_ts (the M7 pre-loads at the
+// RFCTL_5 edge 500 us earlier and triggers at target). Caller guarantees
+// target_ts >= now + 500 us + margin. No M7 GPT3/TTI involvement (tti = 0).
+void switch_rf_at(uint32_t mode, uint32_t target_ts)
+{
+	rf_ctrl.mode = mode;
+	rf_ctrl.issued_phytimer_ts = target_ts - PHYTIMER_500_US_61p44;
+	rf_ctrl.target_phytimer_ts = target_ts;
+	rf_ctrl.tti_period_ts = 0;
+
+	vPhyTimerComparatorConfig( PHY_TIMER_COMP_RFCTL_5,
+					PHY_TIMER_COMPARATOR_CLEAR_INT | PHY_TIMER_COMPARATOR_CROSS_TRIG,
+					ePhyTimerComparatorOutToggle,
+					rf_ctrl.issued_phytimer_ts);
 }
 
 void switch_rf(uint32_t mode)

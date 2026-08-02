@@ -181,8 +181,14 @@ int iLa9310AviHostRecvMboxFromVspa( void * AviHndlr,
         log_dbg( "Read VSPA MBOX[%d]\n\r",
                  mbox_index );
 
+        // v3 transport fix: NON-BLOCKING receive. The 10-tick block here was fatal:
+        // the rfic core task's idle loop drains this queue, and while it sat inside
+        // the queue wait, the host-swcmd EVENT GROUP (a different primitive) could
+        // not wake it - measured 0.2-10 ms swcmd delivery scatter = the residual of
+        // this timeout. Blocking ack waits now live in vLa9310MbxReceive's retry
+        // loop (bounded, us-granular) instead.
         if( pdPASS == xQueueReceive( ( ( struct avi_hndlr * ) AviHndlr )->VspaToCm4QMbox0,
-                                     mbox, ( TickType_t ) AVI_RECV_VSPA_MBOX_TIMEOUT ) )
+                                     mbox, ( TickType_t ) 0 ) )
         {
             log_dbg( "Rcvd VSPA MBOX[%d] msb_lsb %x_%x\n\r",
                      mbox_index, mbox->msb, mbox->lsb );
@@ -196,7 +202,7 @@ int iLa9310AviHostRecvMboxFromVspa( void * AviHndlr,
                   mbox_index );
 
         if( pdPASS == xQueueReceive( ( ( struct avi_hndlr * ) AviHndlr )->VspaToCm4QMbox1,
-                                     mbox, ( TickType_t ) AVI_RECV_VSPA_MBOX_TIMEOUT ) )
+                                     mbox, ( TickType_t ) 0 ) )
         {
             log_dbg( "Rcvd VSPA MBOX[%d] msb_lsb %x_%x\n\r",
                      mbox_index, mbox->msb, mbox->lsb );
@@ -210,8 +216,34 @@ hndl_retval:
     return retval;
 }
 
+/* Host<->M4 mailbox ownership: while a host VSPA boot-handshake runs, the M4
+ * must not consume VSPA outbox messages (its ISR read eats the host's Boot Complete
+ * - reads ARE the consume, peeking is impossible). The host commands the window via
+ * RF_SW_CMD_VSPA_MBOX_HANDOFF; the VSPA IRQ is masked for the duration and any
+ * message latched meanwhile is consumed normally after re-enable. */
+volatile int g_vspa_mbox_handoff;
+
+void vAviVspaMboxHandoff( int on )
+{
+    g_vspa_mbox_handoff = on;
+
+    if( on )
+    {
+        NVIC_DisableIRQ( IRQ_VSPA );
+    }
+    else
+    {
+        NVIC_EnableIRQ( IRQ_VSPA );
+    }
+}
+
 void AviHndleMboxInterrupt( struct avi_hndlr * AviHndlr )
 {
+    if( g_vspa_mbox_handoff )
+    {
+        return; /* host owns the mailboxes for the handshake window */
+    }
+
     struct vspa_regs * pVspaRegs = ( struct vspa_regs * ) AviHndlr->pVspaRegs;
     struct avi_mbox vspambox;
 

@@ -83,3 +83,6 @@ void * iLa9310AviInit( void );
  */
 void * iLa9310AviHandle();
 int iLa9310AviConfig( void );
+
+/* Host<->M4 VSPA mailbox ownership handoff */
+void vAviVspaMboxHandoff( int on );

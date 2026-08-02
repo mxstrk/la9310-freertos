@@ -55,7 +55,7 @@ __isr_vector:
     .long   DefaultISR                                      /* TMU Thermal critical alarm */
     .long   DefaultISR                                      /* EPU */
     .long   vPhyTimerPPSINHandler                           /* Pulse per second in */
-    .long   vPhyTimerPPSOUTHandler                          /* Pulse per second out */
+    .long   rfnm_tdd_alarm_isr                              /* PPS out comparator: repurposed as the TDD v2 rearm alarm (rfnm_tdd.c) */
     .long   DefaultISR                                      /* Reserved */
     .long   DefaultISR                                      /* Reserved */
     .long   DefaultISR                                      /* Reserved */

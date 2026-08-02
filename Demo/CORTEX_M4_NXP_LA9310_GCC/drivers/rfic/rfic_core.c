@@ -3,6 +3,7 @@
  * Copyright 2021-2022 NXP
  */
 #include "rfic_core.h"
+#include "rfnm_rf_ctrl.h"
 #include "debug_console.h"
 #include "rfic_sw_cmd.h"
 #include "rfic_cmd.h"
@@ -119,6 +120,29 @@ BaseType_t xHandleSwCmd( RficDevice_t *pRficDev, rf_sw_cmd_desc_t *pSwCmdDesc)
         case RF_SW_CMD_DUMP_IQ_DATA:
             vRficProcessIqDump(pSwCmdDesc);
             break;
+
+        case RF_SW_CMD_SWITCH_RF:
+            switch_rf(*(uint32_t *)pSwCmdDesc->data);
+            pSwCmdDesc->result = RF_SW_CMD_RESULT_OK;
+            break;
+
+        case RF_SW_CMD_TDD:
+            rfnm_tdd_configure(((uint32_t *)pSwCmdDesc->data)[0],
+                               ((uint32_t *)pSwCmdDesc->data)[1]);
+            pSwCmdDesc->result = RF_SW_CMD_RESULT_OK;
+            break;
+
+        case RF_SW_CMD_TX_WINDOW:
+            vRficProcessTxWindow(pSwCmdDesc);
+            break;
+
+        case RF_SW_CMD_VSPA_MBOX_HANDOFF:
+        {
+            extern void vAviVspaMboxHandoff( int on );
+            vAviVspaMboxHandoff(((uint32_t *)pSwCmdDesc->data)[0]);
+            pSwCmdDesc->result = RF_SW_CMD_RESULT_OK;
+            break;
+        }
 
         case RF_SW_GET_RX_DC_OFFSET:
             vRficGetRxDcOffset(pSwCmdDesc);

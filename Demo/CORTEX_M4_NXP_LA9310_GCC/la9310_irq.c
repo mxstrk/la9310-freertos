@@ -11,6 +11,8 @@
 #include "la9310_main.h"
 #include "la9310_irq.h"
 #include "la9310_edma.h"
+#include "rfnm_rtc_ring.h"	/* RFNM_RTC_DOORBELL_MSG_UNIT_BIT */
+#include "rfnm_rf_ctrl.h"
 #ifdef TURN_ON_HOST_MODE
 #ifdef __RFIC
 #include "rfic_core.h"
@@ -108,6 +110,12 @@ void La9310MSG_1_IRQHandler( void )
     }
 #endif
 #endif
+
+    /* RT command ring doorbell: host producer pushed/flushed/disarmed */
+    if( ( msir & BITMASK( RFNM_RTC_DOORBELL_MSG_UNIT_BIT ) ) )
+    {
+        vRfnmRtcDoorbellFromISR();
+    }
 
     NVIC_ClearPendingIRQ( IRQ_MSG1 );
     #if ARM_ERRATUM_838869

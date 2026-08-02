@@ -35,7 +35,7 @@ endif()
 SET(CMAKE_ASM_FLAGS_RELEASE "${CMAKE_ASM_FLAGS_RELEASE} -g  -mcpu=cortex-m4  -mfloat-abi=soft  -mthumb  -Wall  -fno-common  -ffunction-sections  -fdata-sections  -ffreestanding  -fno-builtin  -Os  -mapcs  -std=gnu99")
 
 # RELEASE C FLAGS
-SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -g  -fno-strict-aliasing  -mcpu=cortex-m4  -mfloat-abi=soft  -mthumb  -MMD  -MP  -Wall  -fno-common  -ffunction-sections  -fdata-sections  -ffreestanding  -fno-builtin  -Os  -mapcs  -std=gnu99 -Werror")
+SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -g  -fno-strict-aliasing  -mcpu=cortex-m4  -mfloat-abi=soft  -mthumb  -MMD  -MP  -Wall  -fno-common  -ffunction-sections  -fdata-sections  -ffreestanding  -fno-builtin  -Os  -mapcs  -std=gnu99 -Werror -Wno-address-of-packed-member")
 
 # RELEASE LD FLAGS
 SET(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -g  -mcpu=cortex-m4  -mfloat-abi=soft  --specs=nano.specs  -lm  -Wall  -fno-common  -ffunction-sections  -fdata-sections  -ffreestanding  -fno-builtin  -Os  -mthumb  -mapcs  -Xlinker --gc-sections  -Xlinker -static  -Xlinker -z  -Xlinker muldefs")
@@ -166,6 +166,8 @@ SET(LA9310_SOURCES
     "${ProjDirPath}/main.c"
     "${ProjDirPath}/la9310_demo.c"
     "${ProjDirPath}/rfnm_rf_ctrl.c"
+    "${ProjDirPath}/rfnm_tdd.c"
+    "${ProjDirPath}/rfnm_rtc.c"
     "${ProjDirPath}/la9310_irq.c"
     "${ProjDirPath}/la9310_v2h_test.c"
     "${ProjDirPath}/bbdev_ipc_raw_demo.c"
@@ -192,7 +194,6 @@ endif()
 if(LA9310_TURN_ON_COMMAND_LINE)
     SET(LA9310_SOURCES ${LA9310_SOURCES}
         "${ProjDirPath}/utils/FreeRTOS-Plus-CLI-Source/FreeRTOS_CLI.c"
-        "${ProjDirPath}/utils/la9310_nlm_test_command.c"
         "${ProjDirPath}/utils/UARTCommandConsole.c"
         "${ProjDirPath}/drivers/timesync/sync_timing_device_cli.c"
       )

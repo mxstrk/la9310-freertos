@@ -87,7 +87,7 @@ enum eLa9310TestCmdID
     };
 #endif
 
-static const char cCmdDescriptinArr[ MAX_TEST_CMDS ][ MAX_CMD_DESCRIPTION_SIZE ] =
+static const char * const cCmdDescriptinArr[ MAX_TEST_CMDS ] =	/* pointer array: the 2D form burned 2.75 KB of ITCM on padding */
 {
     " invokes help ( test help )",
 #ifdef TURN_ON_HOST_MODE

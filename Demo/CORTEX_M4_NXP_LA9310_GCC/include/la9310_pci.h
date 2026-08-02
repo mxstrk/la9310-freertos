@@ -29,6 +29,7 @@
 #ifndef __LA9310_PCI_H
 #define __LA9310_PCI_H
 
+#include <stdint.h>
 #include "config.h"
 #include <la9310_pci_def.h>
 
