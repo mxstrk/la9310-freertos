@@ -16,6 +16,30 @@ struct avi_hndlr * pAviHndlr = NULL;
 struct la9310_evt_hdlr VspaEvtHdlr;
 void (* IntHndlr)( void ) = NULL;
 
+/* Host<->M4 MBOX0 exclusion.
+ *
+ * IQ Player drives VSPA mailbox 0 directly from the PCIe host
+ * (host-utils/vspa_mbox over /dev/mem) and the VSPA firmware replies there.
+ * With the stock mask the M4's AVI ISR also watches MBOX0: it reads
+ * host_in_0_msb/lsb and then clears VSPA_MBOX0_STATUS, so the reply is gone
+ * before the host can read it and vspa_mbox reports
+ * "MBox:0 is not responding".
+ *
+ * NXP hit the same wall and added a runtime mask upstream (la93xx_freertos
+ * 7617c98, "Host entity needs to exclusively use a VSPA MBOX, thus BSP ...
+ * should not interfere") 18 months after this tree forked. Backported here as
+ * a compile-time constant, because this tree has no DFE app and therefore no
+ * caller for a runtime setter.
+ *
+ * Undefined, this folds to VSPA_MBOX_MASK == VSPA_ENABLE_MAILBOX_IRQ == 0xF000
+ * and every added term compiles away, so the stock image stays bit-identical.
+ */
+#ifdef LA9310_HOST_OWNS_MBOX0
+    #define AVI_MBOX_MONITOR_MASK    ( CM4_MBOX1_STATUS | VSPA_MBOX1_STATUS )
+#else
+    #define AVI_MBOX_MONITOR_MASK    VSPA_MBOX_MASK
+#endif
+
 void vVSPAMboxInit()
 {
     OUT_32( PHY_TIMER, 0x1 );
@@ -64,6 +88,19 @@ int iLa9310AviHostSendMboxToVspa( void * AviHndlr,
         retval = -AVI_INVALID_MBOX_INDEX;
         goto hndl_retval;
     }
+
+#ifdef LA9310_HOST_OWNS_MBOX0
+    /* MBOX0 belongs to the PCIe host (IQ Player). This write path is NOT
+     * driven by the ISR -- it stores host_out_0_msb/lsb directly -- so masking
+     * the ISR alone would still let an RFIC command clobber a host round-trip
+     * in flight. Fail loudly instead of corrupting silently. */
+    if( 0 == mbox_index )
+    {
+        log_err( "ERR: MBOX0 reserved for host (IQ Player), send refused\n\r" );
+        retval = -AVI_MBOX_NOT_AVAILABLE;
+        goto hndl_retval;
+    }
+#endif
 
     /* Check if MBOX MUTEX is available */
     if( 0 == mbox_index )
@@ -176,6 +213,17 @@ int iLa9310AviHostRecvMboxFromVspa( void * AviHndlr,
         goto hndl_retval;
     }
 
+#ifdef LA9310_HOST_OWNS_MBOX0
+    /* MBOX0 belongs to the PCIe host (IQ Player): draining it here would eat
+     * the reply the host is waiting for. */
+    if( 0 == mbox_index )
+    {
+        log_err( "ERR: MBOX0 reserved for host (IQ Player), recv refused\n\r" );
+        retval = AVI_MBOX_RCV_FAIL;
+        goto hndl_retval;
+    }
+#endif
+
     if( 0 == mbox_index )
     {
         log_dbg( "Read VSPA MBOX[%d]\n\r",
@@ -253,7 +301,7 @@ void AviHndleMboxInterrupt( struct avi_hndlr * AviHndlr )
      * to the respective Queue
      * */
 
-    if( IN_32( &pVspaRegs->vspa_status ) & VSPA_MBOX0_STATUS )
+    if( IN_32( &pVspaRegs->vspa_status ) & ( VSPA_MBOX0_STATUS & AVI_MBOX_MONITOR_MASK ) )
     {
         log_dbg( "%s: Rcvd mbox0 from VSPA\n\r", __func__ );
         vspambox.msb = IN_32( &pVspaRegs->host_in_0_msb );
@@ -267,7 +315,7 @@ void AviHndleMboxInterrupt( struct avi_hndlr * AviHndlr )
 
         OUT_32( &pVspaRegs->vspa_status, VSPA_MBOX0_STATUS );
     }
-    else if( IN_32( &pVspaRegs->vspa_status ) & VSPA_MBOX1_STATUS )
+    else if( IN_32( &pVspaRegs->vspa_status ) & ( VSPA_MBOX1_STATUS & AVI_MBOX_MONITOR_MASK ) )
     {
         log_dbg( "%s: Rcvd mbox1 from VSPA\n\r", __func__ );
         vspambox.msb = IN_32( &pVspaRegs->host_in_1_msb );
@@ -281,7 +329,7 @@ void AviHndleMboxInterrupt( struct avi_hndlr * AviHndlr )
 
         OUT_32( &pVspaRegs->vspa_status, VSPA_MBOX1_STATUS );
     }
-    else if( IN_32( &pVspaRegs->vspa_status ) & CM4_MBOX0_STATUS )
+    else if( IN_32( &pVspaRegs->vspa_status ) & ( CM4_MBOX0_STATUS & AVI_MBOX_MONITOR_MASK ) )
     {
         log_dbg( "%s: Rcvd mbox0 ack\n\r", __func__ );
 
@@ -303,7 +351,7 @@ void AviHndleMboxInterrupt( struct avi_hndlr * AviHndlr )
 
         OUT_32( &pVspaRegs->vspa_status, CM4_MBOX0_STATUS );
     }
-    else if( IN_32( &pVspaRegs->vspa_status ) & CM4_MBOX1_STATUS )
+    else if( IN_32( &pVspaRegs->vspa_status ) & ( CM4_MBOX1_STATUS & AVI_MBOX_MONITOR_MASK ) )
     {
         log_dbg( "%s: Rcvd mbox1 ack\n\r", __func__ );
 
@@ -357,7 +405,7 @@ void La9310VSPA_IRQRelayHandler( void )
     pStats->avi_intr_raised++;
 
     /* Only DMA interrupts needs to be relayed to HOST */
-    if( status & VSPA_MBOX_MASK )
+    if( status & AVI_MBOX_MONITOR_MASK )
     {
         /* Mailbox related interrupt, got some work
          */
@@ -484,7 +532,7 @@ int iLa9310AviConfig( void )
     /* Enable Mailbox related Interrupts */
     pVspaRegs = pAviHndlr->pVspaRegs;
     OUT_32( &pVspaRegs->vspa_irqen,
-            ( IN_32( &pVspaRegs->vspa_irqen ) | VSPA_ENABLE_MAILBOX_IRQ ) );
+            ( IN_32( &pVspaRegs->vspa_irqen ) | AVI_MBOX_MONITOR_MASK ) );
 
     /* Enable VSPA interrupt handling for FreeRTOS */
     log_info( "INFO:%s: Enabling IRQ_VSPA\n\r", __func__ );
@@ -516,7 +564,7 @@ void iLa9310AviClose( void )
         /* Disabling Mbox Irqs */
         OUT_32( &pVspaRegs->vspa_irqen,
                 IN_32( &pVspaRegs->vspa_irqen ) &
-                ( ~VSPA_ENABLE_MAILBOX_IRQ ) );
+                ( ~AVI_MBOX_MONITOR_MASK ) );
         log_dbg( "%s:MailBox Interrupts have been disabled\n",
                  __func__ );
     }

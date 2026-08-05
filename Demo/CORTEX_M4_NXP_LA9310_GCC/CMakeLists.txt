@@ -55,6 +55,14 @@ SET(DCS ON)
 # Enable/Disable DAC
 SET(DAC ON)
 
+# Hand VSPA mailbox 0 to the PCIe host (IQ Player) instead of the M4.
+# OFF = stock behaviour, and the resulting image must be byte-identical to a
+# stock build. Overridable from the environment so build_release.sh is untouched.
+SET(LA9310_HOST_OWNS_MBOX0 OFF)
+if(DEFINED ENV{LA9310_HOST_OWNS_MBOX0})
+    SET(LA9310_HOST_OWNS_MBOX0 $ENV{LA9310_HOST_OWNS_MBOX0})
+endif()
+
 # C MACRO
 if(LA9310_TURN_ON_COMMAND_LINE)
     SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}  -D__NDEBUG -DLA9310_ENABLE_COMMAND_LINE")
@@ -72,6 +80,10 @@ endif()
 
 if(DAC)
     SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}  -DDAC")
+endif()
+
+if(LA9310_HOST_OWNS_MBOX0)
+    SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}  -DLA9310_HOST_OWNS_MBOX0")
 endif()
 
 # CXX MACRO
