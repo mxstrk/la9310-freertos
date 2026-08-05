@@ -140,6 +140,7 @@ SET(LA9310_SOURCES
     "${ProjDirPath}/drivers/phy_timer/phytimer.c"
     "${ProjDirPath}/drivers/timesync/sync_timing_device.c"
     "${ProjDirPath}/sw_cmd_engine/sw_cmd_engine.c"
+    "${ProjDirPath}/sw_cmd_engine/vspa_debug.c"
     "${ProjDirPath}/utils/delay.c"
   )
 else()
@@ -182,6 +183,7 @@ SET(LA9310_SOURCES
     "${ProjDirPath}/drivers/phy_timer/phytimer.c"
     "${ProjDirPath}/drivers/timesync/sync_timing_device.c"
     "${ProjDirPath}/sw_cmd_engine/sw_cmd_engine.c"
+    "${ProjDirPath}/sw_cmd_engine/vspa_debug.c"
     "${ProjDirPath}/utils/delay.c"
   )
 endif()

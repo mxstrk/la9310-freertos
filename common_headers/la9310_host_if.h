@@ -231,6 +231,7 @@ enum la9310_sw_cmd_status {
 
 enum la9310_sw_cmd {
 	LA9310_SW_CMD_STD_FW_UPGRADE,
+	LA9310_SW_CMD_VSPA_DBG,
 	LA9310_SW_CMD_TOTAL_COUNT
 };
 

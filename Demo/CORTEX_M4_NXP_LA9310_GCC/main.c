@@ -385,14 +385,15 @@ int iInitHandler ( void )
     #endif //TURN_ON_STANDALONE_MODE
 
     vInitMsgUnit();
-#ifdef LA9310_SYNC_TIME_MODE
+    /* LA9310_SYNC_TIME_MODE is defined by no build config, which left the
+     * sw-cmd mailbox dispatcher dead in every image; the VSPA_DBG debug
+     * proxy needs it, so start it unconditionally. */
     if( lSwCmdEngineInit() != 0 )
     {
             log_err( "sw cmd engine init failed\r\n" );
             irc = FAILURE;
             goto out;
     }
-#endif
 #ifdef __RFIC
     if( pdTRUE != iRficInit( pLa9310Info ))
     {
