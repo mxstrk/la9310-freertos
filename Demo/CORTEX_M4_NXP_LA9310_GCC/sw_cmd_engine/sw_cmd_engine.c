@@ -12,6 +12,7 @@
 #include "io.h"
 #include "la9310_host_if.h"
 #include "sync_timing_device.h"
+#include "vspa_debug.h"
 
 SemaphoreHandle_t xSwCmdSemaphore;
 
@@ -31,6 +32,11 @@ void vSwCmdTask( void * pvParameters )
 
         switch( pxCmdDesc->cmd )
         {
+            case LA9310_SW_CMD_VSPA_DBG:
+                pxCmdDesc->data[ 0 ] =
+                    VspaDebugCommand( ( uint32_t * ) pxCmdDesc->data );
+                break;
+
             default:
                 log_err( "sw cmd not implemented: %d\r\n", pxCmdDesc->cmd );
                 break;
