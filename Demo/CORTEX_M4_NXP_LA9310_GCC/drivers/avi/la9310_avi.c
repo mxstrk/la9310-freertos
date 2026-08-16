@@ -93,10 +93,22 @@ int iLa9310AviHostSendMboxToVspa( void * AviHndlr,
     /* MBOX0 belongs to the PCIe host (IQ Player). This write path is NOT
      * driven by the ISR -- it stores host_out_0_msb/lsb directly -- so masking
      * the ISR alone would still let an RFIC command clobber a host round-trip
-     * in flight. Fail loudly instead of corrupting silently. */
+     * in flight. Refuse it.
+     *
+     * Log only the first refusal: callers retry in bounded loops, so an
+     * unconditional log_err() here floods the target log (see the recv path
+     * below, which is polled up to 2000 times per call). */
     if( 0 == mbox_index )
     {
-        log_err( "ERR: MBOX0 reserved for host (IQ Player), send refused\n\r" );
+        static uint8_t ucSendRefusedLogged = 0;
+
+        if( !ucSendRefusedLogged )
+        {
+            ucSendRefusedLogged = 1;
+            log_err( "MBOX0 reserved for host (IQ Player), send refused"
+                     " -- further refusals are silent\n\r" );
+        }
+
         retval = -AVI_MBOX_NOT_AVAILABLE;
         goto hndl_retval;
     }
@@ -215,10 +227,23 @@ int iLa9310AviHostRecvMboxFromVspa( void * AviHndlr,
 
 #ifdef LA9310_HOST_OWNS_MBOX0
     /* MBOX0 belongs to the PCIe host (IQ Player): draining it here would eat
-     * the reply the host is waiting for. */
+     * the reply the host is waiting for.
+     *
+     * First refusal only. vLa9310MbxReceive() polls this up to 2000 times per
+     * call, so logging every refusal fills the target log within seconds. The
+     * RFIC callers are short-circuited in rfic_avi_ctrl.c / rfic_core.c so they
+     * do not spin here at all; this stays as the backstop for any other caller. */
     if( 0 == mbox_index )
     {
-        log_err( "ERR: MBOX0 reserved for host (IQ Player), recv refused\n\r" );
+        static uint8_t ucRecvRefusedLogged = 0;
+
+        if( !ucRecvRefusedLogged )
+        {
+            ucRecvRefusedLogged = 1;
+            log_err( "MBOX0 reserved for host (IQ Player), recv refused"
+                     " -- further refusals are silent\n\r" );
+        }
+
         retval = AVI_MBOX_RCV_FAIL;
         goto hndl_retval;
     }

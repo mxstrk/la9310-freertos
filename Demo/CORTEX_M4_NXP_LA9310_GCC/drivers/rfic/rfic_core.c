@@ -232,6 +232,13 @@ void vRficCoreTask( void * pvParameters )
 	{
 	//    log_err( "%s: Invalid com event.\n\r", __func__ );
 
+#ifdef LA9310_HOST_OWNS_MBOX0
+    /* RFNM reads VSPA inbox 0 here to spot their own iqflood notification and
+     * raise MSI_IRQ_FLOOD_0. With MBOX0 handed to the PCIe host that read can
+     * never succeed -- the ISR mask already keeps MBOX0 out of our hands -- so
+     * skip it entirely. Leaving it in place would refuse (and log) on every
+     * com event that is not a sw_cmd. */
+#else
     struct avi_hndlr *avihndl = NULL;
     struct avi_mbox vspa_mbox;
 
@@ -268,6 +275,7 @@ void vRficCoreTask( void * pvParameters )
     } else {
         log_err( "%s: iLa9310AviHandle error\n\r", __func__ );
     }
+#endif /* LA9310_HOST_OWNS_MBOX0 */
 
 
 
