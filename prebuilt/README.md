@@ -8,6 +8,7 @@ sources are `iqplayer-mbox0` and `iqplayer-mbox0-vdbg`.
 |---|---|---|---|---|
 | `la9310-iqplayer.bin` | 63684 | `ffc5e6ad8cf830e7b579cdc81174a9585404bd028143d806174446ccdf6f767d` | `dcb95183` | no |
 | `la9310-iqplayer-vdbg.bin` | 63684 | `833a5e2df7111c910777040f0680e21023ab117a1145861256254caad13aa38a` | `01dbce99` | yes (LA9310_SW_CMD_VSPA_DBG) |
+| `la9310-iqplayer-vdbg-loopback.bin` | 63684 | `9c2bf083ccb2ca68dd31162229ed143904d7b9ebf95a2008a9e4e1d9a2c83f06` | `298f29a6` | yes, **+ AXIQ loopback** |
 
 The *driver csum* is what `la9310shiva` logs at probe
 (`loaded firmware la9310.bin: 63684 bytes, csum …`) — use it to confirm the
@@ -25,6 +26,34 @@ board as `IRQEN = 0xA000` instead of `0xF000`.
 
 With the switch OFF the image is byte-identical to an unpatched `be3536c`
 build, so the change is provably inert when disabled.
+
+## The AXIQ-loopback variant
+
+`la9310-iqplayer-vdbg-loopback.bin` is the vdbg image plus
+`AXIQ_LOOPBACK_ENABLE`, which makes `vVSPAMboxInit()` write
+`DBGGNCR (0xE00800EC) = 0x5e` -- "AXIQ loopback on RX1". Confirmed in the
+disassembly:
+
+```
+1f804b7c:  ldr   r3, [pc, #12]      @ 0xe0080000
+1f804b7e:  movs  r2, #94            @ 0x5e
+1f804b80:  str.w r2, [r3, #236]     @ 0xec  -> DBGGNCR
+```
+
+The loopback is **internal to the LA9310, ahead of the RFIC**, so a TX->RX
+datapath test runs with the radio untouched. Verified on the board: with the
+transmitter idle, an RX1 capture is all zeros (RMS 0.0); with `iq-replay.sh`
+running, the capture has RMS 12039.7 and its spectral peak sits in the same bin
+at the same normalised frequency (+0.0508 cyc/sample) and the same purity
+(0.757 vs 0.755) as the transmitted tone -- i.e. it *is* the transmitted
+waveform. Throughout, `lsmod` showed **zero** RFNM RF modules loaded and
+`/sys/kernel/rfnm_primary` did not exist, so nothing configured or powered the
+RFIC.
+
+Use this variant for datapath work; it is the only way to exercise the
+host-DDR -> VSPA direction of the IQ Player EP window, which RX streaming never
+touches. Note it also fixes RX1 to the loopback source, so it is **not** the
+image to use for real reception.
 
 ## Trade-off — read before using
 
