@@ -40,6 +40,13 @@ uint32_t vLa9310MbxDrain( void )
     struct avi_mbox vspa_mbox;
     uint32_t n = 0;
 
+#ifdef LA9310_HOST_OWNS_MBOX0
+    /* MBOX0 is the host's: there is nothing here for us to drain, and every
+     * attempt would be refused. Nothing stale can exist from our side either,
+     * since we never post to it. */
+    return 0;
+#endif
+
     if( NULL != avihndl )
     {
         while( n < 4 && 0 == iLa9310AviHostRecvMboxFromVspa( avihndl, &vspa_mbox, 0 ) )
@@ -59,6 +66,14 @@ BaseType_t vLa9310MbxReceive(struct la9310_mbox_v2h *mbox_v2h)
     struct avi_hndlr *avihndl = NULL;
     struct avi_mbox vspa_mbox;
     uint32_t retries = 0;
+
+#ifdef LA9310_HOST_OWNS_MBOX0
+    /* MBOX0 is the host's, so this can never succeed. Fail immediately instead
+     * of spending the full retry budget on it: the loop below polls 2000 times
+     * with a 10 us yield, i.e. ~20 ms of M4 time per call, and every poll would
+     * be refused. */
+    return pdFAIL;
+#endif
 
     avihndl = iLa9310AviHandle();
     if( NULL != avihndl )
