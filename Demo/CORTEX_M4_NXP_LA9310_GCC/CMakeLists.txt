@@ -63,6 +63,15 @@ if(DEFINED ENV{LA9310_HOST_OWNS_MBOX0})
     SET(LA9310_HOST_OWNS_MBOX0 $ENV{LA9310_HOST_OWNS_MBOX0})
 endif()
 
+# AXIQ digital loopback: vVSPAMboxInit() writes DBGGNCR (0xE00800EC) = 0x5e,
+# "AXIQ loopback on RX1", internal to the LA9310. Lets a TX->RX loopback run
+# without going through the RFIC. The define exists in include/la9310_avi.h but
+# is commented out there, so a -D on the command line is the intended switch.
+SET(AXIQ_LOOPBACK_ENABLE OFF)
+if(DEFINED ENV{AXIQ_LOOPBACK_ENABLE})
+    SET(AXIQ_LOOPBACK_ENABLE $ENV{AXIQ_LOOPBACK_ENABLE})
+endif()
+
 # C MACRO
 if(LA9310_TURN_ON_COMMAND_LINE)
     SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}  -D__NDEBUG -DLA9310_ENABLE_COMMAND_LINE")
@@ -84,6 +93,10 @@ endif()
 
 if(LA9310_HOST_OWNS_MBOX0)
     SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}  -DLA9310_HOST_OWNS_MBOX0")
+endif()
+
+if(AXIQ_LOOPBACK_ENABLE)
+    SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}  -DAXIQ_LOOPBACK_ENABLE")
 endif()
 
 # CXX MACRO
