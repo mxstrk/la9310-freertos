@@ -6,13 +6,31 @@ sources are `iqplayer-mbox0` and `iqplayer-mbox0-vdbg`.
 
 | file | size | sha256 | driver csum | debugger |
 |---|---|---|---|---|
-| `la9310-iqplayer.bin` | 63684 | `ffc5e6ad8cf830e7b579cdc81174a9585404bd028143d806174446ccdf6f767d` | `dcb95183` | no |
-| `la9310-iqplayer-vdbg.bin` | 63684 | `833a5e2df7111c910777040f0680e21023ab117a1145861256254caad13aa38a` | `01dbce99` | yes (LA9310_SW_CMD_VSPA_DBG) |
-| `la9310-iqplayer-vdbg-loopback.bin` | 63684 | `9c2bf083ccb2ca68dd31162229ed143904d7b9ebf95a2008a9e4e1d9a2c83f06` | `298f29a6` | yes, **+ AXIQ loopback** |
+| `la9310-iqplayer.bin` | 63684 | `8ede400b4151626d6d735881de25f4ca62e2cc7f92e4cb9124da8e2a22ee401a` | `1a3fd1ee` | no |
+| `la9310-iqplayer-vdbg.bin` | 63684 | `cae699c63cf64248b18f721d63a186390d1247a8e0edbf835edfd82098830e5e` | `7d86cd8e` | yes (LA9310_SW_CMD_VSPA_DBG) |
+| `la9310-iqplayer-vdbg-loopback.bin` | 63684 | `b79787330f425fe3c7f765dd5cac95dd13c3326fcfe70de94cf00cfa2d19ddf1` | `9e8c1c5a` | yes, **+ AXIQ loopback** |
 
 The *driver csum* is what `la9310shiva` logs at probe
 (`loaded firmware la9310.bin: 63684 bytes, csum …`) — use it to confirm the
 board actually runs the image you think it does.
+
+## 2026-08-16 rebuild — quiet target log
+
+All three images were rebuilt after a fix to the MBOX0 refusal path, so the
+hashes above supersede any earlier copy. With `LA9310_HOST_OWNS_MBOX0` the M4
+refuses every MBOX0 access, and it used to log one line per refusal —
+`vLa9310MbxReceive()` polls up to 2000 times per call, so `target_log` filled
+within seconds and each call burned its full ~20 ms budget on a receive that
+cannot succeed.
+
+Now the AVI layer logs only the first refusal per direction, and the three RFIC
+call sites short-circuit instead of spinning. Measured on the board: `target_log`
+holds **0 lines** after a full loopback run, and the loopback itself is
+unchanged (RMS 0.0 idle -> 12039.7 replaying).
+
+The switch stays provably inert when off: an OFF build is still byte-identical
+to an unpatched `be3536c` build,
+`49b4153515a2ab154b7380c96b825446e11b5022c1d752c0aa74baa6876fbc20`.
 
 ## What makes these different from the stock image
 
