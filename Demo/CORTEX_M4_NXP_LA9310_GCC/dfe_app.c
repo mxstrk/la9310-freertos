@@ -2150,42 +2150,52 @@ static void prvProcessHostRx(void)
 static void prvRxLoop(void *pvParameters)
 {
 #ifdef DFE_AUTO_FDD_START
-	/* GRAFT: RFNM has no dpdk-dfe_app to issue "fdd start" over BBDEV IPC, so
-	 * self-start FDD once the VSPA is up. MUST run BEFORE prvBBDEVSetup(), which
-	 * busy-waits forever for a host IPC init we never provide. This programs the
-	 * phytimer/DCS symbol clock the DFE VSPA TX pipeline needs (the phytimer then
-	 * clocks it via its ISR, independent of this task). RF stays off: AXIQ
-	 * loopback is on and RFCTL_5 is gated by DFE_RF_SAFE; FDD only asserts the
-	 * internal tx_allowed (CH5) timing, never the RFIC. */
+	/* GRAFT: RFNM has no dpdk-dfe_app to send the DFE_* config/start opcodes over
+	 * BBDEV IPC, so replicate the host sequence in-firmware, then software-drive the
+	 * per-slot tick (the PPS_OUT interrupt does not work on RFNM — see phytimer.c
+	 * weak-fix + rfnm_dfe_stubs.c). MUST run before prvBBDEVSetup() (which busy-waits
+	 * forever on a host IPC init we never provide). RF stays off: AXIQ loopback on,
+	 * RFCTL_5 gated by DFE_RF_SAFE. */
 	vTaskDelay( pdMS_TO_TICKS( 2000 ) );   /* let the VSPA boot + settle */
-	log_err("DFE_AUTO_FDD_START: issuing fdd start (RF-safe: loopback, no RFCTL)\n\r");
-	/* DIAG (DCS bring-up): host-visible sentinel in an RFNM-dormant v2h stats field.
-	 * 0xFDD00001 = reached the auto-fdd block, about to call vFddStartStop;
-	 * 0xFDD0FDD0 = vFddStartStop returned (did NOT hang in vPhyTimerWaitComparator). */
-	pLa9310Info->pHif->stats.v2h_backout_count = 0xFDD00001u;
-	vFddStartStop( 1 );
-	pLa9310Info->pHif->stats.v2h_backout_count = 0xFDD0FDD0u;
-	/* SOFTWARE-POLLED DCS FRAME TICK.
-	 * On RFNM the PPS_OUT comparator interrupt that normally drives the DFE frame
-	 * tick does not work: the comparator matches (the 61.44 MHz counter passes the
-	 * armed boundary) but delivers no NVIC interrupt (nor does a software ISPR pend),
-	 * and even when it fires once it does not self-sustain. So poll the phytimer and,
-	 * once it reaches the armed boundary ulNextTick, call the DFE handler DIRECTLY.
-	 * Its fdd branch only does portYIELD_FROM_ISR(pdFALSE) (a no-op) besides re-arm +
-	 * ulNextTick advance, so it is safe in task context. This sustains a 10 ms frame
-	 * tick; v2h_dropped_pkt (0x71C0xxxx @HIF+0x54, written in the fdd branch) is the
-	 * host-visible heartbeat. Requires the weak-fix in phytimer.c so the real DFE
-	 * vPhyTimerPPSOUTHandler is linked (not RFNM's trivial one). Replaces
-	 * prvBBDEVSetup() on RFNM (no host IPC ring).
-	 * NOTE: this drives only the frame heartbeat. Clocking the TX *symbol* pipeline
-	 * (tx_sym_idx_request_for_host) additionally needs the per-slot prvTick work,
-	 * which needs the full host warmup→config→fdd sequence — still open. */
-	ulNextTick = uGetPhyTimerTimestamp() + PHYTIMER_10MS_FRAME;
+	log_err("DFE_AUTO_FDD_START: auto-config TDD + software per-slot tick (RF-safe)\n\r");
+
+	/* Config (the DFE_CFG_* opcodes a host would send): a TDD slot pattern
+	 * (mandatory — prvTick dereferences slots[] and divides by ulTotalSlots, 0 =
+	 * hard fault) and 2R antennas. */
+	vSetupTddPattern( SCS_kHz30 );          /* slots[] + ulTotalSlots (DDD S U) */
+	iSetRxAntenna( 0x3 );                   /* 2R: uRxAntennaComparator CH1/CH2 */
+
+	/* Start (DFE_TDD_START): iTddStart -> prvConfigTdd -> prvVSPAConfig
+	 * (MBOX_OPC_SEMISTATIC+DDR_CFG_4KB, HOST_BYPASS_TX/RX on so check_phy_tx_buf_rdy
+	 * passes without a host DDR ring) + counter init + vPhyTimerTickConfig (sets
+	 * ulNextTick, arms PPS_OUT). Blocks ~20 ms/msg on VSPA ACKs — once, here. */
+	pLa9310Info->pHif->stats.v2h_backout_count = 0xFDD00001u;   /* reached config */
+	iTddStart();
+	pLa9310Info->pHif->stats.v2h_backout_count = 0xFDD0FDD0u;   /* config returned */
+	/* vPhyTimerTickConfig leaves ulNextTick ~10 ms (a full frame) ahead, which makes
+	 * each prvTick busy-wait ~10 ms in vPhyTimerWaitComparator and throttles the drive
+	 * to ~100/s. Re-init close to now so it runs at slot cadence. */
+	ulNextTick = uGetPhyTimerTimestamp() + slot_duration[ scs ][ 0 ];
+
+	/* SOFTWARE-DRIVEN PER-SLOT TICK. Replaces the PPS_OUT-ISR-driven tick. Each slot
+	 * (500 us @30 kHz): advance ulNextTick by one slot_duration and run prvTick — it
+	 * re-arms the tx/rx-allowed comparator windows and sends the per-slot MBOX_OPC_TDD,
+	 * which is what keeps the VSPA TX pipeline draining (tx_sym_idx_request_for_host
+	 * advancing). The inner catch-up loop processes every boundary that has already
+	 * passed (1 ms FreeRTOS tick vs 500 us slot; cap 64/poll). Any real PPS_OUT
+	 * interrupt is neutralised by the !bFddIsRunning guard in vPhyTimerPPSOUTHandler
+	 * (bFddIsRunning stays 0 in this TDD path), so prvTick is driven only from here.
+	 * Heartbeat: v2h_dropped_pkt = 0x71C0xxxx | ulTotalTicks @HIF+0x54. */
 	for ( ;; ) {
-		if ( bFddIsRunning &&
-		     ( ( uGetPhyTimerTimestamp() - ulNextTick ) < ( UINT32_MAX / 2u ) ) ) {
-			vPhyTimerPPSOUTHandler();
+		uint32_t now = uGetPhyTimerTimestamp();
+		uint32_t guard = 0;
+		while ( ( ( now - ulNextTick ) < ( UINT32_MAX / 2u ) ) && ( guard++ < 64u ) ) {
+			ulNextTick += slot_duration[ scs ][ ulCurrentSlotInFrame % 2 ];
+			prvTick( NULL, 0 );
+			now = uGetPhyTimerTimestamp();
 		}
+		pLa9310Info->pHif->stats.v2h_dropped_pkt = 0x71C00000u | ( ulTotalTicks & 0xFFFFFu );
+		pLa9310Info->pHif->stats.v2h_sent_pkt    = 0x5A000000u | ( ulVspaMsgCnt & 0xFFFFFu );  /* VSPA acks @0x50 */
 		vTaskDelay( 1 );
 	}
 #endif
