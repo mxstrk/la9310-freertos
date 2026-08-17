@@ -475,6 +475,21 @@ void vPhyTimerPPSOUTHandler()
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 	NVIC_ClearPendingIRQ( IRQ_PPS_OUT );
 
+	/* DIAG: ISR-entry counter (@HIF+0x58, tag 0x15). */
+	{
+		static uint32_t ulDiagIsrEntries = 0;
+		pLa9310Info->pHif->stats.v2h_resumed = 0x15000000u | ( ( ++ulDiagIsrEntries ) & 0xFFFFFu );
+	}
+
+#ifdef DFE_AUTO_FDD_START
+	/* RFNM adaptation: the warmup (non-fdd) prvTick path faults/hangs if it fires
+	 * before the app is configured (uninitialized scs/slots[]) — and RFNM has no
+	 * host to sequence warmup→config→fdd. Only the fdd tick is software-driven here
+	 * (prvRxLoop), so make a pre-fdd interrupt harmless: re-arm nothing, just return. */
+	if ( !bFddIsRunning )
+		return;
+#endif
+
 	if (bFddIsRunning)
 	{
 		/* DIAG (DCS bring-up): host-visible PPS_OUT tick counter in an RFNM-dormant
@@ -2150,18 +2165,29 @@ static void prvRxLoop(void *pvParameters)
 	pLa9310Info->pHif->stats.v2h_backout_count = 0xFDD00001u;
 	vFddStartStop( 1 );
 	pLa9310Info->pHif->stats.v2h_backout_count = 0xFDD0FDD0u;
-	/* FINDING (2026-08-17, board .124): the DCS still does not clock. With the
-	 * PPS_OUT vector correctly routed here (rfnm_dfe_stubs.c bridges the RFNM
-	 * rfnm_tdd_alarm_isr slot to vPhyTimerPPSOUTHandler), the phytimer counter
-	 * runs (61.44MHz, confirmed by polling uGetPhyTimerTimestamp) and the PPS_OUT
-	 * comparator matches (the counter passes the armed target, status bit31
-	 * latches), but the tick ISR below never runs — the comparator match delivers
-	 * NO interrupt to the M4 NVIC on RFNM. Ruled out: the vector, tight arm timing
-	 * (a full-frame re-arm did not help), and the NVIC line number (IRQ_PPS_OUT=24
-	 * matches vector slot 58). Next: a software-polled DCS tick instead of the
-	 * PPS_OUT interrupt. The v2h_backout_count sentinel above (0xFDD0FDD0 @HIF+0xcc)
-	 * and the tick counter (0x71C0xxxx @HIF+0x54, in vPhyTimerPPSOUTHandler) are the
-	 * host-visible probes for this. */
+	/* SOFTWARE-POLLED DCS FRAME TICK.
+	 * On RFNM the PPS_OUT comparator interrupt that normally drives the DFE frame
+	 * tick does not work: the comparator matches (the 61.44 MHz counter passes the
+	 * armed boundary) but delivers no NVIC interrupt (nor does a software ISPR pend),
+	 * and even when it fires once it does not self-sustain. So poll the phytimer and,
+	 * once it reaches the armed boundary ulNextTick, call the DFE handler DIRECTLY.
+	 * Its fdd branch only does portYIELD_FROM_ISR(pdFALSE) (a no-op) besides re-arm +
+	 * ulNextTick advance, so it is safe in task context. This sustains a 10 ms frame
+	 * tick; v2h_dropped_pkt (0x71C0xxxx @HIF+0x54, written in the fdd branch) is the
+	 * host-visible heartbeat. Requires the weak-fix in phytimer.c so the real DFE
+	 * vPhyTimerPPSOUTHandler is linked (not RFNM's trivial one). Replaces
+	 * prvBBDEVSetup() on RFNM (no host IPC ring).
+	 * NOTE: this drives only the frame heartbeat. Clocking the TX *symbol* pipeline
+	 * (tx_sym_idx_request_for_host) additionally needs the per-slot prvTick work,
+	 * which needs the full host warmup→config→fdd sequence — still open. */
+	ulNextTick = uGetPhyTimerTimestamp() + PHYTIMER_10MS_FRAME;
+	for ( ;; ) {
+		if ( bFddIsRunning &&
+		     ( ( uGetPhyTimerTimestamp() - ulNextTick ) < ( UINT32_MAX / 2u ) ) ) {
+			vPhyTimerPPSOUTHandler();
+		}
+		vTaskDelay( 1 );
+	}
 #endif
 
 	if(prvBBDEVSetup() != pdPASS)

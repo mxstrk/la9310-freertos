@@ -111,7 +111,12 @@ void vPhyTimerPPSOUTConfig()
             ulNextPPSOUT );
 }
 
-void vPhyTimerPPSOUTHandler()
+/* GRAFT FIX: this must be WEAK (as in NXP's upstream phytimer.c) so the DFE app's
+ * strong vPhyTimerPPSOUTHandler (dfe_app.c, the real per-slot/frame tick) overrides
+ * it. RFNM dropped the weak attribute, which silently bound the PPS_OUT vector +
+ * every call to this trivial re-arm-only handler instead of the DFE tick — the DCS
+ * never advanced. Restored. */
+__attribute__( ( weak ) ) void vPhyTimerPPSOUTHandler()
 {
     NVIC_ClearPendingIRQ( IRQ_PPS_OUT );
 
