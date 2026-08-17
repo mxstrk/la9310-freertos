@@ -260,10 +260,15 @@ static inline void switch_txrx(uint32_t mode, uint32_t target_ts, uint32_t stop_
 	rf_ctrl.target_phytimer_ts = target_ts - TDD_SWITCH_DELAY;
 	rf_ctrl.tti_period_ts = stop_tti; /* 0: do nothing, 1: stop, 2: period aligned to target_ts */
 
+	rf_ctrl.issued_phytimer_ts = uGetPhyTimerTimestamp() + 50;
+#ifndef DFE_RF_SAFE
+	/* RFCTL_5 keys the external RFIC frontend — gated off for the RF-transmission
+	 * ban. The internal datapath (AXIQ loopback + tx_allowed timing) is unaffected. */
 	vPhyTimerComparatorConfig( PHY_TIMER_COMP_RFCTL_5,
 							   PHY_TIMER_COMPARATOR_CLEAR_INT | PHY_TIMER_COMPARATOR_CROSS_TRIG,
 							   ePhyTimerComparatorOutToggle,
-							   (rf_ctrl.issued_phytimer_ts = (uGetPhyTimerTimestamp() + 50)));
+							   rf_ctrl.issued_phytimer_ts );
+#endif
 
 	vTraceEventRecord((mode == 0xAAAAAAAA) ? TRACE_RF_TX : TRACE_RF_RX,
 						rf_ctrl.issued_phytimer_ts,
@@ -2124,6 +2129,19 @@ static void prvProcessHostRx(void)
 
 static void prvRxLoop(void *pvParameters)
 {
+#ifdef DFE_AUTO_FDD_START
+	/* GRAFT: RFNM has no dpdk-dfe_app to issue "fdd start" over BBDEV IPC, so
+	 * self-start FDD once the VSPA is up. MUST run BEFORE prvBBDEVSetup(), which
+	 * busy-waits forever for a host IPC init we never provide. This programs the
+	 * phytimer/DCS symbol clock the DFE VSPA TX pipeline needs (the phytimer then
+	 * clocks it via its ISR, independent of this task). RF stays off: AXIQ
+	 * loopback is on and RFCTL_5 is gated by DFE_RF_SAFE; FDD only asserts the
+	 * internal tx_allowed (CH5) timing, never the RFIC. */
+	vTaskDelay( pdMS_TO_TICKS( 2000 ) );   /* let the VSPA boot + settle */
+	log_err("DFE_AUTO_FDD_START: issuing fdd start (RF-safe: loopback, no RFCTL)\n\r");
+	vFddStartStop( 1 );
+#endif
+
 	if(prvBBDEVSetup() != pdPASS)
 	{
 		log_err("Failed to create host polling task\r\n");

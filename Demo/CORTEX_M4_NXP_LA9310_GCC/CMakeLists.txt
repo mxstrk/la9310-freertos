@@ -106,7 +106,7 @@ if(AXIQ_LOOPBACK_ENABLE)
 endif()
 
 if(LA9310_DFE_APP)
-    SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}  -DLA9310_DFE_APP -Wno-unused-function -Wno-unused-but-set-variable -Wno-unused-variable")
+    SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}  -DLA9310_DFE_APP -DDFE_AUTO_FDD_START -DDFE_RF_SAFE -Wno-unused-function -Wno-unused-but-set-variable -Wno-unused-variable")
 endif()
 
 # CXX MACRO
