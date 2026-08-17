@@ -12,6 +12,9 @@
 #include "la9310_main.h"
 #include "la9310_irq.h"
 #include "la9310_demo.h"
+#ifdef LA9310_DFE_APP
+#include "dfe_app.h"
+#endif
 #include "la9310_gpio.h"
 #include "la9310_edmaAPI.h"
 #include "la9310_i2cAPI.h"
@@ -450,6 +453,7 @@ int iInitHandler ( void )
         vDcsInit(Half_Freq);
     #endif
 
+#ifndef LA9310_DFE_APP
     if( rfnm_tdd_init() )
     {
         log_info( "Failed to create the rfnm tdd task\n\r" );
@@ -459,6 +463,7 @@ int iInitHandler ( void )
     {
         log_info( "Failed to create the rfnm rtc task\n\r" );
     }
+#endif
 
     #ifdef TURN_ON_HOST_MODE
     #ifdef RUN_V2H_TEST_APP
@@ -519,6 +524,13 @@ int main( void )
         vUARTCommandConsoleStart( mainUART_COMMAND_CONSOLE_STACK_SIZE,
                                   mainUART_COMMAND_CONSOLE_TASK_PRIORITY );
     #endif
+
+#ifdef LA9310_DFE_APP
+    /* Start NXP's DFE reference app (host-poll task; warms the VSPA, drives the
+     * DCS/symbol pipeline for the paired DFE VSPA image). Does not key RF. */
+    if( vDFEInit() )
+        log_info( "%s: vDFEInit failed\n\r", __func__ );
+#endif
 
 #if 0
         int i = 0;

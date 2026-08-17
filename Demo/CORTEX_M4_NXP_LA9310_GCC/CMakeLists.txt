@@ -72,6 +72,12 @@ if(DEFINED ENV{AXIQ_LOOPBACK_ENABLE})
     SET(AXIQ_LOOPBACK_ENABLE $ENV{AXIQ_LOOPBACK_ENABLE})
 endif()
 
+# Graft NXP's DFE reference M4 app (dfe_app.c) onto the RFNM board init.
+SET(LA9310_DFE_APP OFF)
+if(DEFINED ENV{LA9310_DFE_APP})
+    SET(LA9310_DFE_APP $ENV{LA9310_DFE_APP})
+endif()
+
 # C MACRO
 if(LA9310_TURN_ON_COMMAND_LINE)
     SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}  -D__NDEBUG -DLA9310_ENABLE_COMMAND_LINE")
@@ -99,6 +105,10 @@ if(AXIQ_LOOPBACK_ENABLE)
     SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}  -DAXIQ_LOOPBACK_ENABLE")
 endif()
 
+if(LA9310_DFE_APP)
+    SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}  -DLA9310_DFE_APP -Wno-unused-function -Wno-unused-but-set-variable -Wno-unused-variable")
+endif()
+
 # CXX MACRO
 
 # INCLUDE_DIRECTORIES
@@ -116,6 +126,7 @@ endif()
     INCLUDE_DIRECTORIES(${ProjDirPath}/drivers/timesync)
     INCLUDE_DIRECTORIES(${ProjDirPath}/sw_cmd_engine)
     INCLUDE_DIRECTORIES(${LA9310_COMMON_HEADERS}/)
+    INCLUDE_DIRECTORIES(${ProjDirPath}/utils/)    # DFE app needs task_stats.h even without CLI
 if(LA9310_TURN_ON_COMMAND_LINE)
     INCLUDE_DIRECTORIES(${ProjDirPath}/utils/)
     INCLUDE_DIRECTORIES(${ProjDirPath}/utils/FreeRTOS-Plus-CLI-Source/)
@@ -191,9 +202,6 @@ SET(LA9310_SOURCES
     "${ProjDirPath}/platform/boards/la9310/hardware_init.c"
     "${ProjDirPath}/main.c"
     "${ProjDirPath}/la9310_demo.c"
-    "${ProjDirPath}/rfnm_rf_ctrl.c"
-    "${ProjDirPath}/rfnm_tdd.c"
-    "${ProjDirPath}/rfnm_rtc.c"
     "${ProjDirPath}/la9310_irq.c"
     "${ProjDirPath}/la9310_v2h_test.c"
     "${ProjDirPath}/bbdev_ipc_raw_demo.c"
@@ -216,6 +224,26 @@ if(DCS)
     SET(LA9310_SOURCES ${LA9310_SOURCES}
     	"${ProjDirPath}/drivers/dcs/la9310_dcs.c"
       )
+endif()
+
+# RFNM's own VSPA/TDD datapath (rfnm_tdd/rf_ctrl/rtc) clashes with NXP's DFE app
+# (duplicate rf_ctrl/switch_rf, op-code-9 vs the NXP DFE mailbox) — exclude it when
+# grafting the DFE app; add NXP's dfe_app + deps instead.
+if(NOT LA9310_DFE_APP)
+    SET(LA9310_SOURCES ${LA9310_SOURCES}
+        "${ProjDirPath}/rfnm_rf_ctrl.c"
+        "${ProjDirPath}/rfnm_tdd.c"
+        "${ProjDirPath}/rfnm_rtc.c")
+endif()
+
+if(LA9310_DFE_APP)
+    SET(LA9310_SOURCES ${LA9310_SOURCES}
+        "${ProjDirPath}/dfe_avi.c"
+        "${ProjDirPath}/dfe_app.c"
+        "${ProjDirPath}/sdr_rf_ctrl.c"
+        "${ProjDirPath}/rfnm_dfe_stubs.c"
+        "${ProjDirPath}/utils/task_stats.c")
+    # NOTE: utils/la9310_dfe_test_command.c (CLI) deliberately added later.
 endif()
 
 if(LA9310_TURN_ON_COMMAND_LINE)

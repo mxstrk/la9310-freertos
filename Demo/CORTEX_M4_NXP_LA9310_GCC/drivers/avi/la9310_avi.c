@@ -481,6 +481,28 @@ void iLa9310AviVspaHwVer( void )
     log_info( "INFO: VSPA Hw VER: 0x%x\n\r", pVspaRegs->hw_version );
 }
 
+/* Grafted for the DFE app (dfe_app.c:2163). Mirrors NXP la9310_avi.c. */
+unsigned int iLa9310AviVspaSwVer( void )
+{
+    struct vspa_regs * pVspaRegs = ( struct vspa_regs * ) VSPA_BASE_ADDR;
+
+    log_info( "INFO: VSPA Sw VER: 0x%x\n\r", pVspaRegs->sw_version );
+
+    return pVspaRegs->sw_version;
+}
+
+/* Grafted for the DFE app (dfe_app.c:1994): runtime AXIQ digital loopback
+ * (DBGGNCR TX->RX, internal to the LA9310 AVI block — no RFIC). Mirrors NXP. */
+void vAxiqLoopbackSet( bool bLoopbackEnable, uint32_t rx_mask )
+{
+    if( bLoopbackEnable )
+        OUT_32( DBGGNCR, ( ( SET_AXIQ_LOOPBACK_MASK | rx_mask ) | IN_32( DBGGNCR ) ) );
+    else
+        OUT_32( DBGGNCR, ( REMOVE_AXIQ_LOOPBACK_MASK & IN_32( DBGGNCR ) ) );
+
+    log_dbg( "%s: IN_32( DBGGNCR ) = %#x\r\n", __func__, IN_32( DBGGNCR ) );
+}
+
 void * iLa9310AviHandle()
 {
     return pAviHndlr;

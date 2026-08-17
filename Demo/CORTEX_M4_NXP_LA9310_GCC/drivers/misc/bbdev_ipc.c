@@ -128,6 +128,14 @@ void bbdev_ipc_signal_ready(uint8_t dev_id)
 	SET_HIF_MOD_RDY(pLa9310Info->pHif, LA9310_HIF_MOD_READY_IPC_APP);
 }
 
+/* Grafted stub for the DFE app (dfe_app.c:1864, IPC stop/restart path). RFNM has
+ * no CLEAR_HIF_MOD_RDY; the DFE path re-inits IPC right after, so no-op is safe. */
+void bbdev_ipc_close(uint8_t dev_id, uint8_t core_id)
+{
+	UNUSED(dev_id);
+	UNUSED(core_id);
+}
+
 struct dev_attr_t *
 bbdev_ipc_get_dev_attr(uint8_t dev_id)
 {

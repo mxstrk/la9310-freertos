@@ -50,6 +50,7 @@ struct dev_attr_t {
  *   - 0  on success, error code otherwise
  */
 int bbdev_ipc_init(uint8_t dev_id, uint8_t core_id);
+void bbdev_ipc_close(uint8_t dev_id, uint8_t core_id);   /* grafted for DFE app */
 
 /**
  * Checks if device on host has been initialized yet or not. As FreeRTOS

@@ -191,5 +191,6 @@ void La9310VSPA_IRQDefaultHandler( void );
 void La9310VSPA_IRQRelayHandler( void );
 void La9310VSPA_IRQHandler( void );
 void iLa9310AviVspaHwVer( void );
+unsigned int iLa9310AviVspaSwVer( void );
 void iLa9310VspaInit( void );
 void iLa9310AviClose( void );

@@ -31,6 +31,9 @@
 #define SET_AXIQ_LOOPBACK_MASK          0x0000001e
 #define REMOVE_AXIQ_LOOPBACK_MASK       0xffffffe1
 
+#include <stdbool.h>
+void vAxiqLoopbackSet( bool bLoopbackEnable, uint32_t rx_mask );   /* grafted for DFE app */
+
 
 #define FLOAT2FIXED( x, f )    ( ( int ) ( ( x ) * ( 1 << f ) ) )
 #define FIXED2FLOAT( x, f )    ( ( ( float ) ( x ) ) / ( 1 << f ) )
