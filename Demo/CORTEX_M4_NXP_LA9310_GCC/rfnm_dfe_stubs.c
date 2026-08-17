@@ -9,11 +9,21 @@
  * rfic_cmd/rfic_core still reference these symbols, so the image will not link
  * without definitions. They are never exercised on the DFE-app path (no RFNM RF
  * commands are issued; the DFE app drives the VSPA via NXP's own mailbox), so
- * empty no-ops are safe.
+ * empty no-ops are safe — WITH ONE EXCEPTION, rfnm_tdd_alarm_isr (see below).
  */
 #include <stdint.h>
 
-void rfnm_tdd_alarm_isr( void ) {}
+/* EXCEPTION — not a no-op. RFNM repurposed the PPS-OUT comparator interrupt
+ * vector (start.S slot 58) for its own TDD-v2 rearm alarm; NXP's tree has
+ * vPhyTimerPPSOUTHandler there. The DFE app arms PHY_TIMER_COMP_PPS_OUT in
+ * vFddStartStop() and relies on vPhyTimerPPSOUTHandler running each 10ms frame
+ * to maintain the DCS symbol clock that advances the VSPA TX pipeline. A no-op
+ * here silently kills the DCS: the M4 boots and fdd-starts (bFddIsRunning=1, the
+ * phytimer counter runs), but the frame tick never fires and the pipeline never
+ * clocks. Forward the vector to the DFE handler. Verified on .124: without this,
+ * the PPS_OUT ISR tick counter never advances; the fix is what makes it tick. */
+extern void vPhyTimerPPSOUTHandler( void );
+void rfnm_tdd_alarm_isr( void ) { vPhyTimerPPSOUTHandler(); }
 void vRfnmRtcDoorbellFromISR( void ) {}
 void rfnm_tdd_configure( uint32_t period_chunks, uint32_t duty_chunks ) { (void)period_chunks; (void)duty_chunks; }
 void rfnm_tdd_set_txgate( uint32_t en ) { (void)en; }

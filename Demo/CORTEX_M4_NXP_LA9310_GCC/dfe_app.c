@@ -477,6 +477,11 @@ void vPhyTimerPPSOUTHandler()
 
 	if (bFddIsRunning)
 	{
+		/* DIAG (DCS bring-up): host-visible PPS_OUT tick counter in an RFNM-dormant
+		 * v2h stats field. An advancing 0x71C0xxxx on the host proves this ISR fires
+		 * each 10ms frame ⇒ the phytimer runs and PPS_OUT is wired ⇒ DCS base alive. */
+		static uint32_t ulDiagPpsCount = 0;
+		pLa9310Info->pHif->stats.v2h_dropped_pkt = 0x71C00000u | ((++ulDiagPpsCount) & 0x000FFFFFu);
 		ulNextTick += slot_duration[SCS_kHz30][0] * max_slots_per_sfn[SCS_kHz30]; /* 10ms */
 		vPhyTimerComparatorConfig( PHY_TIMER_COMP_PPS_OUT,
 				PHY_TIMER_COMPARATOR_CLEAR_INT | PHY_TIMER_COMPARATOR_CROSS_TRIG,
@@ -2139,7 +2144,24 @@ static void prvRxLoop(void *pvParameters)
 	 * internal tx_allowed (CH5) timing, never the RFIC. */
 	vTaskDelay( pdMS_TO_TICKS( 2000 ) );   /* let the VSPA boot + settle */
 	log_err("DFE_AUTO_FDD_START: issuing fdd start (RF-safe: loopback, no RFCTL)\n\r");
+	/* DIAG (DCS bring-up): host-visible sentinel in an RFNM-dormant v2h stats field.
+	 * 0xFDD00001 = reached the auto-fdd block, about to call vFddStartStop;
+	 * 0xFDD0FDD0 = vFddStartStop returned (did NOT hang in vPhyTimerWaitComparator). */
+	pLa9310Info->pHif->stats.v2h_backout_count = 0xFDD00001u;
 	vFddStartStop( 1 );
+	pLa9310Info->pHif->stats.v2h_backout_count = 0xFDD0FDD0u;
+	/* FINDING (2026-08-17, board .124): the DCS still does not clock. With the
+	 * PPS_OUT vector correctly routed here (rfnm_dfe_stubs.c bridges the RFNM
+	 * rfnm_tdd_alarm_isr slot to vPhyTimerPPSOUTHandler), the phytimer counter
+	 * runs (61.44MHz, confirmed by polling uGetPhyTimerTimestamp) and the PPS_OUT
+	 * comparator matches (the counter passes the armed target, status bit31
+	 * latches), but the tick ISR below never runs — the comparator match delivers
+	 * NO interrupt to the M4 NVIC on RFNM. Ruled out: the vector, tight arm timing
+	 * (a full-frame re-arm did not help), and the NVIC line number (IRQ_PPS_OUT=24
+	 * matches vector slot 58). Next: a software-polled DCS tick instead of the
+	 * PPS_OUT interrupt. The v2h_backout_count sentinel above (0xFDD0FDD0 @HIF+0xcc)
+	 * and the tick counter (0x71C0xxxx @HIF+0x54, in vPhyTimerPPSOUTHandler) are the
+	 * host-visible probes for this. */
 #endif
 
 	if(prvBBDEVSetup() != pdPASS)
